@@ -183,17 +183,29 @@ export default function ChatPage() {
     }
   };
 
-  // Get webhook URL based on grade
+  // Get webhook URL based on grade - VERSÃO ROBUSTA CORRIGIDA
   const getWebhookUrl = (userGrade) => {
+    // Normalizar grade: remover º, "ano", espaços e converter para string
+    const normalizedGrade = String(userGrade)
+      .replace(/º.*/, '') // Remove "º ano" ou "º"
+      .replace(/ano/i, '') // Remove "ano" (case insensitive)
+      .trim(); // Remove espaços
+    
     const gradeUrls = {
-      '7º ano': process.env.NEXT_PUBLIC_N8N_7TH_GRADE_URL,
-      '8º ano': process.env.NEXT_PUBLIC_N8N_8TH_GRADE_URL,
-      '9º ano': process.env.NEXT_PUBLIC_N8N_9TH_GRADE_URL
+      '7': process.env.NEXT_PUBLIC_N8N_WEBHOOK_7,
+      '8': process.env.NEXT_PUBLIC_N8N_WEBHOOK_8,
+      '9': process.env.NEXT_PUBLIC_N8N_WEBHOOK_9
     };
-    return gradeUrls[userGrade] || gradeUrls['7º ano'];
+    
+    // Debug para desenvolvimento (remover em produção)
+    console.log(`🔍 Grade original: "${userGrade}" → Grade normalizado: "${normalizedGrade}"`);
+    console.log(`🔗 URL encontrada:`, gradeUrls[normalizedGrade] ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+    
+    // Retorna URL encontrada ou fallback para 7º ano
+    return gradeUrls[normalizedGrade] || gradeUrls['7'];
   };
 
-  // Send message to AI
+  // Send message to AI - VERSÃO CORRIGIDA SEM DUPLICAÇÕES
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -213,8 +225,9 @@ export default function ChatPage() {
 
     try {
       const webhookUrl = getWebhookUrl(grade);
+      
       if (!webhookUrl) {
-        throw new Error('URL do webhook não configurada para este ano letivo');
+        throw new Error(`URL do webhook não configurada para o ano letivo: ${grade}`);
       }
 
       let messageToSend = userMessage;
@@ -224,6 +237,8 @@ export default function ChatPage() {
         messageToSend = `[Imagem anexada: ${selectedImage.name}] ${userMessage}`;
       }
 
+      console.log('🚀 Enviando para webhook:', webhookUrl.substring(0, 50) + '...');
+
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -232,16 +247,18 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: messageToSend,
           grade: grade,
-          userId: user.id
+          userId: user.id,
+          timestamp: new Date().toISOString()
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Erro na API: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Erro na API: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      const aiResponse = data.response || data.message || 'Desculpa, não consegui processar a tua pergunta.';
+      const aiResponse = data.response || data.message || data.text || 'Desculpa, não consegui processar a tua pergunta.';
 
       const newAiMessage = { 
         text: aiResponse, 
@@ -252,21 +269,26 @@ export default function ChatPage() {
       setMessages(prev => [...prev, newAiMessage]);
 
       // Save conversation to database
-      await supabase
-        .from('conversations')
-        .insert({
-          user_id: user.id,
-          user_message: userMessage,
-          ai_response: aiResponse,
-          grade: grade
-        });
+      try {
+        await supabase
+          .from('conversations')
+          .insert({
+            user_id: user.id,
+            user_message: userMessage,
+            ai_response: aiResponse,
+            grade: grade
+          });
+      } catch (dbError) {
+        console.error('Erro ao salvar conversa:', dbError);
+        // Não interromper o fluxo se falhar ao salvar
+      }
 
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
-      toast.error('Erro ao enviar mensagem. Tenta novamente.');
+      toast.error(`Erro: ${error.message}`);
       
       const errorMessage = { 
-        text: 'Desculpa, ocorreu um erro. Por favor, tenta novamente.', 
+        text: `Desculpa, ocorreu um erro: ${error.message}. Por favor, tenta novamente.`, 
         sender: 'ai', 
         timestamp: new Date() 
       };
@@ -290,6 +312,14 @@ export default function ChatPage() {
     });
   };
 
+  // Handle Enter key press
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(e);
+    }
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -311,7 +341,7 @@ export default function ChatPage() {
           <MathLabLogo />
           
           <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-600 dark:text-gray-300">
+            <div className="text-sm text-gray-600 dark:text-gray-300 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full border border-blue-200 dark:border-blue-700">
               <User size={16} className="inline mr-1" />
               {grade}
             </div>
@@ -331,7 +361,7 @@ export default function ChatPage() {
             
             <button
               onClick={handleLogout}
-              className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
             >
               <LogOut size={16} />
               <span>Sair</span>
@@ -350,6 +380,9 @@ export default function ChatPage() {
                 <Bot size={48} className="mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium mb-2">Olá! Sou o teu tutor de matemática</p>
                 <p className="text-sm">Faz uma pergunta sobre matemática do {grade} para começarmos!</p>
+                <div className="mt-4 text-xs text-gray-400">
+                  Podes enviar texto ou fazer upload de uma imagem com exercícios
+                </div>
               </div>
             ) : (
               messages.map((message, index) => (
@@ -363,11 +396,11 @@ export default function ChatPage() {
                       <img 
                         src={message.image.preview} 
                         alt="Imagem enviada" 
-                        className="w-full rounded-lg mb-2 max-w-48"
+                        className="w-full rounded-lg mb-2 max-w-48 shadow-sm"
                       />
                     )}
-                    <p className="whitespace-pre-wrap text-sm">{message.text}</p>
-                    <p className={`text-xs mt-1 ${
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
+                    <p className={`text-xs mt-1 opacity-75 ${
                       message.sender === 'user' 
                         ? 'text-blue-100' 
                         : 'text-gray-500 dark:text-gray-400'
@@ -407,23 +440,28 @@ export default function ChatPage() {
                   placeholder="Escreve a tua pergunta de matemática..."
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-500 dark:placeholder-gray-400 transition-colors"
                   rows="2"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage(e);
-                    }
-                  }}
+                  onKeyPress={handleKeyPress}
+                  disabled={loading}
                 />
               </div>
               
               <button
                 type="submit"
                 disabled={!input.trim() || loading}
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-400 text-white p-3 rounded-xl transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-gray-300 disabled:to-gray-400 disabled:dark:from-gray-600 disabled:dark:to-gray-700 text-white p-3 rounded-xl transition-all duration-200 disabled:cursor-not-allowed shadow-sm hover:shadow-md transform hover:scale-105 disabled:transform-none"
               >
                 <Send size={20} />
               </button>
             </form>
+            
+            {/* Status indicator */}
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>Enter para enviar, Shift+Enter para nova linha</span>
+              <span className="flex items-center space-x-1">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span>IA Online</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
