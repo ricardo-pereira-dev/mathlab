@@ -1,0 +1,44 @@
+const fs = require('fs');
+const path = require('path');
+
+// Create a simple SVG icon for Math Lab
+const svgIcon = `
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad)" />
+  
+  <!-- Math Symbol -->
+  <path d="M150 200 L350 200 M150 250 L200 250 M150 300 L350 300" 
+        stroke="white" stroke-width="20" stroke-linecap="round"/>
+  
+  <!-- Variables -->
+  <circle cx="320" cy="180" r="8" fill="white"/>
+  <circle cx="320" cy="320" r="8" fill="white"/>
+  
+  <!-- Enhancement Dot -->
+  <circle cx="400" cy="120" r="20" fill="#06b6d4" opacity="0.9"/>
+</svg>
+`;
+
+// Create icons directory
+const iconsDir = path.join(__dirname, 'public', 'icons');
+if (!fs.existsSync(iconsDir)) {
+  fs.mkdirSync(iconsDir, { recursive: true });
+}
+
+// Write SVG file
+fs.writeFileSync(path.join(iconsDir, 'icon.svg'), svgIcon);
+
+console.log('✅ SVG icon created at public/icons/icon.svg');
+console.log('📝 Next steps:');
+console.log('1. Use online converter to create PNG icons from SVG');
+console.log('2. Create sizes: 72x72, 192x192, 512x512');
+console.log('3. Save all as icon-{size}.png in public/icons/');
