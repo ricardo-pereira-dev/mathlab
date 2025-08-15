@@ -121,7 +121,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
-  const [grade, setGrade] = useState('');
+  const [grade, setGrade] = useState('7º ano'); // Default com string
   const [selectedImage, setSelectedImage] = useState(null);
   const messagesEndRef = useRef(null);
   const router = useRouter();
@@ -145,11 +145,12 @@ export default function ChatPage() {
         return;
       }
 
+      console.log('Login realizado:', session.user);
       setUser(session.user);
       
-      // Get user grade from metadata or use default
+      // Get user grade from metadata or use default - GARANTIR QUE É STRING
       const userGrade = session.user?.user_metadata?.grade || '7º ano';
-      setGrade(userGrade);
+      setGrade(String(userGrade)); // Garantir que é sempre string
 
       loadConversationHistory(session.user.id);
     };
@@ -183,29 +184,102 @@ export default function ChatPage() {
     }
   };
 
-  // Get webhook URL based on grade - VERSÃO ROBUSTA CORRIGIDA
+  // Get webhook URL based on grade - VERSÃO DEFINITIVA CORRIGIDA
   const getWebhookUrl = (userGrade) => {
-    // Normalizar grade: remover º, "ano", espaços e converter para string
-    const normalizedGrade = String(userGrade)
+    // Garantir que userGrade é string e normalizar
+    const gradeStr = String(userGrade || '7º ano');
+    const normalizedGrade = gradeStr
       .replace(/º.*/, '') // Remove "º ano" ou "º"
       .replace(/ano/i, '') // Remove "ano" (case insensitive)
       .trim(); // Remove espaços
     
-    const gradeUrls = {
-      '7': process.env.NEXT_PUBLIC_N8N_WEBHOOK_7,
-      '8': process.env.NEXT_PUBLIC_N8N_WEBHOOK_8,
-      '9': process.env.NEXT_PUBLIC_N8N_WEBHOOK_9
+    // VERIFICAR TODAS AS POSSIBILIDADES DE ENV VARS
+    // 1. Tentar com os nomes exatos que viste no Vercel
+    const exactVarNames = {
+      '7': process.env.NEXT_PUBLIC_N8N_7TH_GRADE_WEBHOOK,
+      '8': process.env.NEXT_PUBLIC_N8N_8TH_GRADE_WEBHOOK,
+      '9': process.env.NEXT_PUBLIC_N8N_9TH_GRADE_WEBHOOK
+    };
+
+    // 2. Fallback para outras possibilidades
+    const fallbackVarNames = {
+      '7': [
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_7_ANO,
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_7ANO,
+        process.env.NEXT_PUBLIC_WEBHOOK_7TH_GRADE,
+        process.env.N8N_7TH_GRADE_WEBHOOK
+      ],
+      '8': [
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_8_ANO,
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_8ANO,
+        process.env.NEXT_PUBLIC_WEBHOOK_8TH_GRADE,
+        process.env.N8N_8TH_GRADE_WEBHOOK
+      ],
+      '9': [
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_9_ANO,
+        process.env.NEXT_PUBLIC_N8N_WEBHOOK_9ANO,
+        process.env.NEXT_PUBLIC_WEBHOOK_9TH_GRADE,
+        process.env.N8N_9TH_GRADE_WEBHOOK
+      ]
     };
     
-    // Debug para desenvolvimento (remover em produção)
+    // Debug SUPER detalhado - MOSTRA TUDO
     console.log(`🔍 Grade original: "${userGrade}" → Grade normalizado: "${normalizedGrade}"`);
-    console.log(`🔗 URL encontrada:`, gradeUrls[normalizedGrade] ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
     
-    // Retorna URL encontrada ou fallback para 7º ano
-    return gradeUrls[normalizedGrade] || gradeUrls['7'];
+    // Log de TODAS as variáveis de ambiente que começam com NEXT_PUBLIC_
+    const allNextPublicVars = Object.keys(process.env || {})
+      .filter(key => key.startsWith('NEXT_PUBLIC_'))
+      .reduce((acc, key) => {
+        acc[key] = process.env[key] ? 'CONFIGURADA ✅' : 'VAZIA ❌';
+        return acc;
+      }, {});
+    
+    console.log('🌐 TODAS as variáveis NEXT_PUBLIC_:', allNextPublicVars);
+    
+    // Tentar encontrar a URL
+    let selectedUrl = exactVarNames[normalizedGrade];
+    let foundMethod = `exact-${normalizedGrade}`;
+    
+    // Se não encontrou com o nome exato, tentar fallbacks
+    if (!selectedUrl && fallbackVarNames[normalizedGrade]) {
+      for (let i = 0; i < fallbackVarNames[normalizedGrade].length; i++) {
+        const fallbackUrl = fallbackVarNames[normalizedGrade][i];
+        if (fallbackUrl) {
+          selectedUrl = fallbackUrl;
+          foundMethod = `fallback-${normalizedGrade}-${i}`;
+          break;
+        }
+      }
+    }
+    
+    // Se ainda não encontrou, tentar grade 7 como último recurso
+    if (!selectedUrl && normalizedGrade !== '7') {
+      selectedUrl = exactVarNames['7'];
+      if (selectedUrl) {
+        foundMethod = 'fallback-to-grade-7';
+        console.log(`⚠️ Usando webhook do 7º ano como fallback para grade ${normalizedGrade}`);
+      }
+    }
+    
+    // Debug final
+    console.log(`🔗 URL encontrada:`, selectedUrl ? 'ENCONTRADA ✅' : 'NÃO ENCONTRADA ❌');
+    console.log(`📝 Método usado: ${foundMethod}`);
+    
+    if (selectedUrl) {
+      console.log(`✅ Webhook URL para grade ${normalizedGrade}:`);
+      console.log(`🔗 ${selectedUrl.substring(0, 70)}...`);
+    } else {
+      console.error('❌ NENHUMA URL encontrada após tentar todos os métodos!');
+      console.error('🔧 URLs testadas para grade', normalizedGrade + ':');
+      console.error('   - NEXT_PUBLIC_N8N_7TH_GRADE_WEBHOOK:', exactVarNames['7'] ? 'EXISTS' : 'MISSING');
+      console.error('   - NEXT_PUBLIC_N8N_8TH_GRADE_WEBHOOK:', exactVarNames['8'] ? 'EXISTS' : 'MISSING'); 
+      console.error('   - NEXT_PUBLIC_N8N_9TH_GRADE_WEBHOOK:', exactVarNames['9'] ? 'EXISTS' : 'MISSING');
+    }
+    
+    return selectedUrl;
   };
 
-  // Send message to AI - VERSÃO CORRIGIDA SEM DUPLICAÇÕES
+  // Send message to AI - VERSÃO FINAL
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -227,7 +301,8 @@ export default function ChatPage() {
       const webhookUrl = getWebhookUrl(grade);
       
       if (!webhookUrl) {
-        throw new Error(`URL do webhook não configurada para o ano letivo: ${grade}`);
+        const gradeNumber = String(grade).replace(/º.*/, '').replace(/ano/i, '').trim();
+        throw new Error(`❌ URL do webhook não configurada para o ano letivo ${gradeNumber}. Verifica as variáveis de ambiente no Vercel Dashboard.`);
       }
 
       let messageToSend = userMessage;
@@ -237,7 +312,7 @@ export default function ChatPage() {
         messageToSend = `[Imagem anexada: ${selectedImage.name}] ${userMessage}`;
       }
 
-      console.log('🚀 Enviando para webhook:', webhookUrl.substring(0, 50) + '...');
+      console.log('🚀 Enviando mensagem para N8N...');
 
       const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -278,17 +353,17 @@ export default function ChatPage() {
             ai_response: aiResponse,
             grade: grade
           });
+        console.log('✅ Conversa guardada com sucesso');
       } catch (dbError) {
         console.error('Erro ao salvar conversa:', dbError);
-        // Não interromper o fluxo se falhar ao salvar
       }
 
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
-      toast.error(`Erro: ${error.message}`);
+      toast.error(`${error.message}`);
       
       const errorMessage = { 
-        text: `Desculpa, ocorreu um erro: ${error.message}. Por favor, tenta novamente.`, 
+        text: `Desculpa, ocorreu um erro: ${error.message}`, 
         sender: 'ai', 
         timestamp: new Date() 
       };
