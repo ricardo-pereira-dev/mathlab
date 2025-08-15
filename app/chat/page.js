@@ -297,13 +297,84 @@ export default function ChatPage() {
     setSelectedImage(null);
     setLoading(true);
 
-    try {
-      const webhookUrl = getWebhookUrl(grade);
-      
-      if (!webhookUrl) {
-        const gradeNumber = String(grade).replace(/º.*/, '').replace(/ano/i, '').trim();
-        throw new Error(`❌ URL do webhook não configurada para o ano letivo ${gradeNumber}. Verifica as variáveis de ambiente no Vercel Dashboard.`);
-      }
+   try {
+  // Debug ultra-detalhado para diagnosticar problema
+  const gradeNumber = String(grade).replace(/º.*/, '').replace(/ano/i, '').trim();
+  console.log(`🔍 Grade original: "${grade}" → Grade normalizado: "${gradeNumber}"`);
+  
+  // NOVO: Verificar se estamos em ambiente de produção
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV}`);
+  console.log(`🔧 Modo Vercel: ${process.env.VERCEL ? "SIM" : "NÃO"}`);
+  
+  // Listar TODAS as variáveis disponíveis (não apenas NEXT_PUBLIC_)
+  console.log('📋 Process.env keys total:', Object.keys(process.env).length);
+  
+  // Mostrar especificamente as variáveis que precisamos
+  const criticalVars = [
+    'NEXT_PUBLIC_N8N_7TH_GRADE_WEBHOOK',
+    'NEXT_PUBLIC_N8N_8TH_GRADE_WEBHOOK', 
+    'NEXT_PUBLIC_N8N_9TH_GRADE_WEBHOOK'
+  ];
+  
+  console.log('🎯 VARIÁVEIS CRÍTICAS:');
+  criticalVars.forEach(key => {
+    const value = process.env[key];
+    console.log(`  ${key}: ${value ? `"${value.substring(0,50)}..."` : "UNDEFINED ❌"}`);
+  });
+
+  // Tentar múltiplas nomenclaturas e métodos
+  let webhookUrl = null;
+  let methodUsed = null;
+
+  // Método 1: Acesso direto com logs detalhados
+  console.log(`🔍 Tentando acessar: NEXT_PUBLIC_N8N_${gradeNumber}TH_GRADE_WEBHOOK`);
+  webhookUrl = process.env[`NEXT_PUBLIC_N8N_${gradeNumber}TH_GRADE_WEBHOOK`];
+  if (webhookUrl) {
+    methodUsed = `direct-${gradeNumber}`;
+    console.log(`✅ Método direto funcionou!`);
+  }
+
+  // Método 2: Mapeamento estático (NOVO - mais confiável)
+  if (!webhookUrl) {
+    console.log(`🗺️ Tentando mapeamento estático...`);
+    const webhookMap = {
+      '7': process.env.NEXT_PUBLIC_N8N_7TH_GRADE_WEBHOOK,
+      '8': process.env.NEXT_PUBLIC_N8N_8TH_GRADE_WEBHOOK, 
+      '9': process.env.NEXT_PUBLIC_N8N_9TH_GRADE_WEBHOOK
+    };
+    
+    // Log cada tentativa
+    console.log(`📍 Valor para grade ${gradeNumber}:`, webhookMap[gradeNumber] || "UNDEFINED");
+    
+    webhookUrl = webhookMap[gradeNumber];
+    if (webhookUrl) {
+      methodUsed = `static-map-${gradeNumber}`;
+      console.log(`✅ Mapeamento estático funcionou!`);
+    }
+  }
+
+  // Método 3: Fallback hardcore - valores hardcoded temporários
+  if (!webhookUrl) {
+    console.log(`🆘 Tentando fallback hardcore...`);
+    // TEMPORÁRIO: Se não conseguir ler as env vars, usar diretamente
+    // (Isto vai nos ajudar a identificar se é problema de env vars)
+    console.log(`⚠️ ATENÇÃO: Usando fallback temporário para debug!`);
+    webhookUrl = "https://mathlab.app.n8n.cloud/webhook/debug-test";
+    methodUsed = `hardcore-fallback`;
+  }
+
+  console.log(`🔗 URL encontrada: ${webhookUrl ? "ENCONTRADA ✅" : "NÃO ENCONTRADA ❌"}`);
+  if (methodUsed) {
+    console.log(`📝 Método usado: ${methodUsed}`);
+  }
+
+  if (!webhookUrl) {
+    // ÚLTIMO RECURSO: Log completo do process.env
+    console.log('🚨 ÚLTIMO RECURSO - Dump completo:');
+    console.log('All env keys:', Object.keys(process.env).join(', '));
+    
+    throw new Error(`URL do webhook não configurada para o ano letivo: ${gradeNumber}`);
+  }
 
       let messageToSend = userMessage;
       
