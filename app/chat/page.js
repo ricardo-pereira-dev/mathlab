@@ -188,6 +188,9 @@ export default function ChatPage() {
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
+    // 🚨 TESTE DEFINITIVO - CÓDIGO NOVO ATIVO?
+console.log("🚨🚨🚨 CÓDIGO NOVO DETECTADO - VERSÃO 2.1");
+console.log("🚨🚨🚨 TIMESTAMP:", new Date().toISOString());
 
     const userMessage = input.trim();
     const newUserMessage = { 
