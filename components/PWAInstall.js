@@ -5,94 +5,128 @@ import { Download, X, Smartphone } from 'lucide-react';
 
 export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [showInstallButton, setShowInstallButton] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Check if iOS
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    setIsIOS(ios);
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
 
-    // Listen for PWA install prompt
+    // Listen for the beforeinstallprompt event
     const handleBeforeInstallPrompt = (e) => {
+      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
+      // Stash the event so it can be triggered later
       setDeferredPrompt(e);
-      setShowInstallBanner(true);
+      setShowInstallButton(true);
+      
+      // Show banner after 3 seconds if not dismissed
+      setTimeout(() => {
+        if (!isInstalled) {
+          setShowBanner(true);
+        }
+      }, 3000);
+    };
+
+    // Listen for app installed event
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setShowInstallButton(false);
+      setShowBanner(false);
+      console.log('PWA foi instalada com sucesso!');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setShowInstallBanner(false);
-    }
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [isInstalled]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
 
+    // Show the install prompt
     deferredPrompt.prompt();
-    const choiceResult = await deferredPrompt.userChoice;
+
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
     
-    if (choiceResult.outcome === 'accepted') {
-      console.log('PWA installation accepted');
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+    } else {
+      console.log('User dismissed the install prompt');
     }
-    
+
+    // Clear the deferredPrompt
     setDeferredPrompt(null);
-    setShowInstallBanner(false);
+    setShowInstallButton(false);
+    setShowBanner(false);
   };
 
-  const handleDismiss = () => {
-    setShowInstallBanner(false);
-    localStorage.setItem('pwa-dismissed', 'true');
+  const dismissBanner = () => {
+    setShowBanner(false);
+    // Hide banner for 24 hours
+    localStorage.setItem('pwa-banner-dismissed', Date.now().toString());
   };
 
-  // Don't show if dismissed or already installed
-  if (!showInstallBanner || localStorage.getItem('pwa-dismissed')) {
+  // Don't show anything if already installed
+  if (isInstalled) {
     return null;
   }
 
-  return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-sm">
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-xl shadow-2xl border border-blue-300">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <Smartphone size={20} />
-            <span className="font-semibold text-sm">Instalar App</span>
+  // Install Banner
+  if (showBanner) {
+    return (
+      <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 shadow-lg">
+        <div className="flex items-center justify-between max-w-md mx-auto">
+          <div className="flex items-center gap-3">
+            <Smartphone className="w-6 h-6" />
+            <div>
+              <p className="text-sm font-semibold">Math Lab Enhanced</p>
+              <p className="text-xs opacity-90">Instale para acesso rápido!</p>
+            </div>
           </div>
-          <button 
-            onClick={handleDismiss}
-            className="text-blue-100 hover:text-white transition-colors"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleInstallClick}
+              className="bg-white text-blue-600 px-3 py-1 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors"
+            >
+              Instalar
+            </button>
+            <button
+              onClick={dismissBanner}
+              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        
-        <p className="text-sm text-blue-100 mb-3">
-          {isIOS 
-            ? 'Adiciona ao ecrã inicial para melhor experiência!' 
-            : 'Instala o Math Lab como app para acesso rápido!'
-          }
-        </p>
-        
-        {isIOS ? (
-          <div className="text-xs text-blue-100">
-            Toca em <span className="font-semibold">⎋</span> e depois em <span className="font-semibold">"Adicionar ao Ecrã Inicial"</span>
-          </div>
-        ) : (
-          <button
-            onClick={handleInstallClick}
-            className="bg-white text-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors flex items-center space-x-2 w-full justify-center"
-          >
-            <Download size={16} />
-            <span>Instalar Agora</span>
-          </button>
-        )}
       </div>
-    </div>
-  );
+    );
+  }
+
+  // Floating Install Button
+  if (showInstallButton) {
+    return (
+      <button
+        onClick={handleInstallClick}
+        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
+        title="Instalar Math Lab Enhanced"
+      >
+        <Download className="w-6 h-6 group-hover:animate-pulse" />
+        <span className="absolute -top-12 right-0 bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          Instalar App
+        </span>
+      </button>
+    );
+  }
+
+  return null;
 }
